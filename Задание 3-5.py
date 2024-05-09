@@ -5,17 +5,20 @@ import matplotlib
 # Устанавливаем параметры графика
 matplotlib.rcParams['figure.figsize'] = (13.0, 5.0)
 
+def target_function(x):
+    return 2**x*torch.sin(2**-x)
+
 # Генерируем обучающие данные
-x_train = torch.rand(100) * 20.0 - 10.0
-y_train = torch.sin(x_train)
-noise = torch.randn(y_train.shape) / 5.0
+x_train = torch.linspace(-10, 5, 100)
+y_train = target_function(x_train)
+noise = torch.randn(y_train.shape) / 20
 y_train += noise
 x_train.unsqueeze_(1)
 y_train.unsqueeze_(1)
 
 # Генерируем валидационные данные
-x_validation = torch.linspace(-10, 10, 100)
-y_validation = torch.sin(x_validation)
+x_validation = torch.linspace(-10, 5, 100)
+y_validation = target_function(x_validation)
 x_validation.unsqueeze_(1)
 y_validation.unsqueeze_(1)
 
@@ -59,7 +62,7 @@ def test_sine_net(opt_method, hidden_neurons, lr):
     if opt_method == 'ADAM':
         optimizer = torch.optim.Adam(sine_net.parameters(), lr)
     elif opt_method == 'SGD':
-        optimizer = torch.optim.SGD(sine_net.parameters(), lr)
+        optimizer = torch.optim.SGD(sine_net.parameters(), lr=lr)  # Изменено: передан параметр lr
     else:
         return
     train(sine_net, optimizer, 2000)
@@ -76,7 +79,28 @@ def predict(net, x, y):
     plt.legend(loc='upper left')
     plt.xlabel('$x$')
     plt.ylabel('$y$')
-    plt.savefig('Задание_1.png')
+    plt.savefig('Задание_3.png')
 
-MAE_var8 = test_sine_net('SGD', 40, 0.01)
-print(f'Метрика = {MAE_var8}')
+result_MAE = 1
+result_check_num = 1
+check_num = 1
+n_hidden_neurons = 10  # Число нейронов в скрытом слое
+
+while n_hidden_neurons < 41:
+    start_lr = 0.003
+    end_lr = 0.017
+    current_lr = start_lr
+
+    while round(current_lr, 3) <= end_lr:  # Изменено: условие для шага градиентного спуска
+        print('Тест №', check_num)
+        MAE = test_sine_net('SGD', n_hidden_neurons, current_lr)  # Изменено: переданы параметры n_hidden_neurons и lr
+        print(f"Метрика = {MAE}")
+        if MAE < result_MAE:
+            result_MAE = MAE
+            result_check_num = check_num
+        current_lr += 0.001  # Изменено: увеличивается шаг градиентного спуска
+        check_num += 1
+    n_hidden_neurons += 10
+
+print('Лучшая метрика', result_MAE)
+print('Номер исследования', result_check_num)

@@ -1,63 +1,99 @@
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
 
-# Генерируем случайные данные для обучения
-np.random.seed(42)
-torch.manual_seed(42)
-X = torch.randn(1000, 10)  # 1000 примеров, 10 признаков
-y = torch.randint(0, 2, (1000,))  # 1000 меток классов (0 или 1)
+# Устанавливаем параметры графика
+matplotlib.rcParams['figure.figsize'] = (13.0, 5.0)
 
+# Генерируем обучающие данные
+x_train = torch.rand(100) * 20.0 - 10.0
+y_train = torch.sin(x_train)
+noise = torch.randn(y_train.shape) / 5.0
+y_train += noise
+x_train.unsqueeze_(1)
+y_train.unsqueeze_(1)
+
+# Генерируем валидационные данные
+x_validation = torch.linspace(-10, 10, 100)
+y_validation = torch.sin(x_validation)
+x_validation.unsqueeze_(1)
+y_validation.unsqueeze_(1)
 
 # Определяем класс нейронной сети
-class NeuralNet(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
-        super(NeuralNet, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(hidden_size, output_size)
-        self.sigmoid = nn.Sigmoid()
+class SineNet(torch.nn.Module):
+    def __init__(self, n_hidden_neurons):
+        super(SineNet, self).__init__()
+        self.fc1 = torch.nn.Linear(1, n_hidden_neurons)
+        self.act1 = torch.nn.Sigmoid()
+        self.fc2 = torch.nn.Linear(n_hidden_neurons, 1)
 
     def forward(self, x):
-        out = self.fc1(x)
-        out = self.relu(out)
-        out = self.fc2(out)
-        out = self.sigmoid(out)
-        return out
+        x = self.fc1(x)
+        x = self.act1(x)
+        x = self.fc2(x)
+        return x
 
 
-# Функция для обучения и оценки нейронной сети с заданным lr
-def train_and_evaluate(lr):
-    model = NeuralNet(10, 40, 1)  # 10 входных признаков, 40 нейронов в скрытом слое, 1 выходной нейрон
-    criterion = nn.BCELoss()  # бинарная кросс-энтропия для бинарной классификации
-    optimizer = optim.SGD(model.parameters(), lr=lr)
+# Определяем функцию оценки метрики
+def metric(pred, target):
+    return (pred - target).abs().mean()
 
-    # Обучение
-    for epoch in range(100):
+
+# Определяем функцию потерь
+def loss(pred, target):
+    squares = (pred - target) ** 2
+    return squares.mean()
+
+# Определяем функцию обучения
+def train(sine_net, optimizer, epoch_count):
+    for epoch_index in range(epoch_count):
         optimizer.zero_grad()
-        outputs = model(X)
-        loss = criterion(outputs.squeeze(), y.float())  # squeeze используется для удаления размерности 1
-        loss.backward()
+        y_pred = sine_net.forward(x_train)
+        loss_val = loss(y_pred, y_train)
+        loss_val.backward()
         optimizer.step()
 
-    # Оценка точности модели
-    with torch.no_grad():
-        predicted = (model(X).squeeze() > 0.5).float()
-        accuracy = (predicted == y).sum().item() / y.size(0)
+# Определяем функцию тестирования нейронной сети
+def test_sine_net(opt_method, hidden_neurons, lr):
+    sine_net = SineNet(hidden_neurons)
+    if opt_method == 'ADAM':
+        optimizer = torch.optim.Adam(sine_net.parameters(), lr)
+    elif opt_method == 'SGD':
+        optimizer = torch.optim.SGD(sine_net.parameters(), lr=lr)  # Изменено: передан параметр lr
+    else:
+        return
+    train(sine_net, optimizer, 2000)
+    predict(sine_net, x_validation.detach(), y_validation.detach())
+    print(opt_method, hidden_neurons, lr, 'finished')
+    return metric(sine_net.forward(x_validation), y_validation).item()
 
-    return accuracy
 
+# Определяем функцию предсказания
+def predict(net, x, y):
+    y_pred = net.forward(x)
+    plt.plot(x.numpy(), y.numpy(), 'o', label='Ground truth')
+    plt.plot(x.numpy(), y_pred.data.numpy(), 'o', c='r', label='Prediction')
+    plt.legend(loc='upper left')
+    plt.xlabel('$x$')
+    plt.ylabel('$y$')
+    plt.savefig('Задание_2.png')
 
-# Номинальное значение lr
-nominal_lr = 0.01
+result_MAE = 1
+result_check_num = 1
+check_num = 1
+lr = 0.01  # Шаг градиентного спуска
+n_hidden_neurons = 40  # Число нейронов в скрытом слое
 
-# Интервал для тестирования lr
-lr_values = [0.1 * nominal_lr, 0.5 * nominal_lr, nominal_lr, 2 * nominal_lr, 5 * nominal_lr, 10 * nominal_lr]
+while lr <= 0.02:  # Изменено: условие для шага градиентного спуска
+    print('Тест №', check_num)
+    MAE = test_sine_net('SGD', n_hidden_neurons, lr)  # Изменено: переданы параметры n_hidden_neurons и lr
+    if MAE < result_MAE:
+        result_MAE = MAE
+        result_check_num = check_num
+    print('Метрика =', MAE)
+    lr += 0.001  # Изменено: увеличивается шаг градиентного спуска
+    check_num += 1
+    print()
 
-# Исследование нейронной сети с разными значениями lr
-for lr in lr_values:
-    accuracy = train_and_evaluate(lr)
-    with open("Задание_2.txt", "at") as f:
-        f.write(f"Learning Rate: {lr}, Accuracy: {accuracy}\n")
-
+print('Лучшая метрика', result_MAE)
+print('Номер исследования', result_check_num)
